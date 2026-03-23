@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tab Manager Popup</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; padding:12px; width:260px }
+      button { padding:8px 12px; margin-top:8px }
+      input { width:100%; padding:6px }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label>会话名称</label>
+      <input id="session-name" placeholder="例如：工作会话 2026-03-20" />
+      <button id="save-session">保存当前标签为会话</button>
+      <div id="status" style="margin-top:8px;color:green"></div>
+    </div>
+    <script type="module" src="/src/popup/popup.ts"></script>
+  </body>
+</html>
