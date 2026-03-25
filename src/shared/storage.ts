@@ -43,6 +43,49 @@ export async function loadData(): Promise<AppState> {
 }
 
 export async function saveData(state: AppState): Promise<void> {
+  return debouncedSave(state)
+}
+
+// Immediately write to storage (no debounce). 返回完成写入的 Promise。
+export async function saveDataImmediate(state: AppState): Promise<void> {
+  return performWrite(state)
+}
+
+const DEBOUNCE_MS = 800
+let pendingState: AppState | null = null
+let saveTimer: number | null = null
+let pendingResolvers: Array<() => void> = []
+
+function debouncedSave(state: AppState): Promise<void> {
+  pendingState = state
+
+  return new Promise((resolve) => {
+    pendingResolvers.push(resolve)
+
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+    }
+
+    saveTimer = window.setTimeout(async () => {
+      const toSave = pendingState!
+      pendingState = null
+      saveTimer = null
+      try {
+        await performWrite(toSave)
+        const resolvers = pendingResolvers.slice()
+        pendingResolvers = []
+        resolvers.forEach(r => r())
+      } catch (e) {
+        // still resolve callers to avoid hanging; errors can be logged by caller
+        const resolvers = pendingResolvers.slice()
+        pendingResolvers = []
+        resolvers.forEach(r => r())
+      }
+    }, DEBOUNCE_MS)
+  })
+}
+
+function performWrite(state: AppState): Promise<void> {
   if (isChromeExtension) {
     return new Promise((resolve) => {
       ;(window as any).chrome.storage.local.set({ [STORAGE_KEY]: state }, () => {
@@ -50,7 +93,10 @@ export async function saveData(state: AppState): Promise<void> {
       })
     })
   } else {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    return new Promise((resolve) => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      resolve()
+    })
   }
 }
 

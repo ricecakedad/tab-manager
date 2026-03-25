@@ -14,6 +14,7 @@ export interface Group {
   id: string
   name: string
   color?: string
+  note?: string
   items: BookmarkItem[]
   collapsed: boolean
 }

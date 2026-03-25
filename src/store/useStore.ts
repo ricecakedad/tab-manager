@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Space, TabSession, BookmarkItem } from '../shared/types'
-import { loadData, saveData } from '../shared/storage'
+import { loadData, saveData, saveDataImmediate } from '../shared/storage'
 
 interface StoreState {
   spaces: Space[]
@@ -10,25 +10,22 @@ interface StoreState {
   isLoading: boolean
   searchQuery: string
 
+  // Actions
   initialize: () => Promise<void>
   setActiveSpace: (spaceId: string) => Promise<void>
   addSpace: (name: string, icon: string, color: string) => Promise<void>
-  deleteSpace: (spaceId: string) => Promise<void>
-  toggleDarkMode: () => Promise<void>
   addGroup: (spaceId: string, groupName: string) => Promise<void>
   updateGroupName: (spaceId: string, groupId: string, newName: string) => Promise<void>
   updateGroupColor: (spaceId: string, groupId: string, color: string) => Promise<void>
-  deleteGroup: (spaceId: string, groupId: string) => Promise<void>
+  updateGroupNote: (spaceId: string, groupId: string, note: string) => Promise<void>
   addBookmark: (spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => Promise<void>
   updateBookmark: (spaceId: string, groupId: string, bookmarkId: string, newTitle: string, newNote?: string) => Promise<void>
   removeBookmark: (spaceId: string, groupId: string, bookmarkId: string) => Promise<void>
   moveBookmark: (spaceId: string, groupId: string, fromIndex: number, toIndex: number) => Promise<void>
-  moveGroup: (spaceId: string, fromIndex: number, toIndex: number) => Promise<void>
+  moveBookmarkToGroup: (spaceId: string, fromGroupId: string, toGroupId: string, bookmarkIndex: number, toIndex: number) => Promise<void>
   setSearchQuery: (query: string) => void
   getActiveSpace: () => Space | undefined
   getFilteredBookmarks: () => { groupName: string; items: BookmarkItem[] }[]
-  exportAllSpaces: () => Promise<void>
-  importSpaces: (spaces: Space[]) => Promise<void>
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -48,167 +45,259 @@ export const useStore = create<StoreState>((set, get) => ({
       isDarkMode: data.isDarkMode,
       isLoading: false
     })
-    if (data.isDarkMode) document.documentElement.classList.add('dark-mode')
   },
 
   setActiveSpace: async (spaceId: string) => {
     set({ activeSpaceId: spaceId })
-    await saveData(get())
-  },
-
-  toggleDarkMode: async () => {
-    const isDarkMode = !get().isDarkMode
-    set({ isDarkMode })
-    document.documentElement.classList.toggle('dark-mode')
-    await saveData(get())
+    const { spaces, sessions, isDarkMode } = get()
+    await saveDataImmediate({ spaces, activeSpaceId: spaceId, sessions, isDarkMode })
   },
 
   addSpace: async (name: string, icon: string, color: string) => {
-    const spaces = [...get().spaces, {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpace: Space = {
       id: `space-${Date.now()}`,
-      name, icon, color,
+      name,
+      icon,
+      color,
       groups: [],
       createdAt: Date.now()
-    }]
-    set({ spaces })
-    await saveData(get())
-  },
-
-  deleteSpace: async (spaceId: string) => {
-    const spaces = get().spaces.filter(s => s.id !== spaceId)
-    const activeSpaceId = spaces[0]?.id || ''
-    set({ spaces, activeSpaceId })
-    await saveData(get())
+    }
+    const newSpaces = [...spaces, newSpace]
+    set({ spaces: newSpaces })
+    await saveDataImmediate({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
   addGroup: async (spaceId: string, groupName: string) => {
-    const spaces = get().spaces.map(space =>
-      space.id === spaceId ? {
-        ...space,
-        groups: [...space.groups, {
-          id: `group-${Date.now()}`,
-          name: groupName,
-          color: '#ffffff',
-          items: [],
-          collapsed: false
-        }]
-      } : space
-    )
-    set({ spaces })
-    await saveData(get())
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: [...space.groups, {
+            id: `group-${Date.now()}`,
+            name: groupName,
+            color: '#ffffff',
+            items: [],
+            collapsed: false
+          }]
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    // debounce save to avoid frequent storage writes
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  updateGroupName: async (_spaceId: string, groupId: string, newName: string) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.map(group =>
-        group.id === groupId ? { ...group, name: newName } : group
-      )
-    }))
-    set({ spaces })
-    await saveData(get())
+  updateGroupName: async (spaceId: string, groupId: string, newName: string) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return { ...group, name: newName }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  updateGroupColor: async (_spaceId: string, groupId: string, color: string) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.map(group =>
-        group.id === groupId ? { ...group, color } : group
-      )
-    }))
-    set({ spaces })
-    await saveData(get())
+  updateGroupColor: async (spaceId: string, groupId: string, color: string) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return { ...group, color }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  deleteGroup: async (_spaceId: string, groupId: string) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.filter(g => g.id !== groupId)
-    }))
-    set({ spaces })
-    await saveData(get())
+  updateGroupNote: async (spaceId: string, groupId: string, note: string) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return { ...group, note }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  addBookmark: async (_spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.map(group =>
-        group.id === groupId ? {
-          ...group,
-          items: [...group.items, { ...bookmark, id: `bm-${Date.now()}`, addedAt: Date.now() }]
-        } : group
-      )
-    }))
-    set({ spaces })
-    await saveData(get())
+  addBookmark: async (spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return {
+                ...group,
+                items: [...group.items, {
+                  ...bookmark,
+                  id: `bm-${Date.now()}`,
+                  addedAt: Date.now()
+                }]
+              }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  removeBookmark: async (_spaceId: string, groupId: string, bookmarkId: string) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.map(group =>
-        group.id === groupId ? {
-          ...group,
-          items: group.items.filter(item => item.id !== bookmarkId)
-        } : group
-      )
-    }))
-    set({ spaces })
-    await saveData(get())
+  removeBookmark: async (spaceId: string, groupId: string, bookmarkId: string) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return {
+                ...group,
+                items: group.items.filter(item => item.id !== bookmarkId)
+              }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  updateBookmark: async (_spaceId: string, groupId: string, bookmarkId: string, newTitle: string, newNote?: string) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.map(group =>
-        group.id === groupId ? {
-          ...group,
-          items: group.items.map(item =>
-            item.id === bookmarkId ? { ...item, title: newTitle, note: newNote ?? item.note } : item
-          )
-        } : group
-      )
-    }))
-    set({ spaces })
-    await saveData(get())
+  updateBookmark: async (spaceId: string, groupId: string, bookmarkId: string, newTitle: string, newNote?: string) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return {
+                ...group,
+                items: group.items.map(item => {
+                  if (item.id === bookmarkId) {
+                    return { ...item, title: newTitle, note: newNote !== undefined ? newNote : item.note }
+                  }
+                  return item
+                })
+              }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  moveBookmark: async (_spaceId: string, groupId: string, fromIndex: number, toIndex: number) => {
-    const spaces = get().spaces.map(space => ({
-      ...space,
-      groups: space.groups.map(group =>
-        group.id === groupId ? {
-          ...group,
-          items: ((items) => {
-            const [removed] = items.splice(fromIndex, 1)
-            items.splice(toIndex, 0, removed)
-            return items
-          })([...group.items])
-        } : group
-      )
-    }))
-    set({ spaces })
-    await saveData(get())
+  moveBookmark: async (spaceId: string, groupId: string, fromIndex: number, toIndex: number) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              const items = [...group.items]
+              const [removed] = items.splice(fromIndex, 1)
+              items.splice(toIndex, 0, removed)
+              return { ...group, items }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  moveGroup: async (spaceId: string, fromIndex: number, toIndex: number) => {
-    const spaces = get().spaces.map(space =>
-      space.id === spaceId ? {
-        ...space,
-        groups: ((groups) => {
-          const [removed] = groups.splice(fromIndex, 1)
-          groups.splice(toIndex, 0, removed)
-          return groups
-        })([...space.groups])
-      } : space
-    )
-    set({ spaces })
-    await saveData(get())
+  moveBookmarkToGroup: async (spaceId: string, fromGroupId: string, toGroupId: string, bookmarkIndex: number, toIndex: number) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    let bookmarkItem: BookmarkItem | null = null
+    
+    // 先从源分组获取书签项
+    const sourceSpace = spaces.find(s => s.id === spaceId)
+    const sourceGroup = sourceSpace?.groups.find(g => g.id === fromGroupId)
+    if (sourceGroup && sourceGroup.items[bookmarkIndex]) {
+      bookmarkItem = sourceGroup.items[bookmarkIndex]
+    }
+    
+    if (!bookmarkItem) return
+    
+    // 从源分组移除并添加到目标分组
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === fromGroupId) {
+              // 源分组：移除书签
+              const items = group.items.filter((_, idx) => idx !== bookmarkIndex)
+              return { ...group, items }
+            } else if (group.id === toGroupId) {
+              // 目标分组：插入书签
+              const items = [...group.items]
+              items.splice(toIndex, 0, bookmarkItem)
+              return { ...group, items }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
-  setSearchQuery: (query: string) => set({ searchQuery: query }),
+  setSearchQuery: (query: string) => {
+    set({ searchQuery: query })
+  },
 
-  getActiveSpace: () => get().spaces.find(s => s.id === get().activeSpaceId),
+  getActiveSpace: () => {
+    const { spaces, activeSpaceId } = get()
+    return spaces.find(s => s.id === activeSpaceId)
+  },
 
   getFilteredBookmarks: () => {
     const { searchQuery } = get()
@@ -216,7 +305,9 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!space) return []
 
     if (!searchQuery.trim()) {
-      return space.groups.filter(g => g.items.length > 0).map(g => ({ groupName: g.name, items: g.items }))
+      return space.groups
+        .filter(g => g.items.length > 0)
+        .map(g => ({ groupName: g.name, items: g.items }))
     }
 
     const query = searchQuery.toLowerCase()
@@ -230,33 +321,5 @@ export const useStore = create<StoreState>((set, get) => ({
         )
       }))
       .filter(g => g.items.length > 0)
-  },
-
-  exportAllSpaces: async () => {
-    const dataStr = JSON.stringify(get().spaces, null, 2)
-    const blob = new Blob([dataStr], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `toby-spaces-${new Date().toISOString().split('T')[0]}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-  },
-
-  importSpaces: async (spaces: Space[]) => {
-    const newSpaces = spaces.map(space => ({
-      ...space,
-      id: `space-${Date.now()}-${Math.random()}`,
-      groups: space.groups.map(g => ({
-        ...g,
-        id: `group-${Date.now()}-${Math.random()}`,
-        items: g.items.map(i => ({
-          ...i,
-          id: `bm-${Date.now()}-${Math.random()}`
-        }))
-      }))
-    }))
-    set({ spaces: [...get().spaces, ...newSpaces] })
-    await saveData(get())
   }
 }))
