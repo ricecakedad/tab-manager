@@ -18,6 +18,7 @@ interface StoreState {
   updateGroupName: (spaceId: string, groupId: string, newName: string) => Promise<void>
   updateGroupColor: (spaceId: string, groupId: string, color: string) => Promise<void>
   updateGroupNote: (spaceId: string, groupId: string, note: string) => Promise<void>
+  removeGroup: (spaceId: string, groupId: string) => Promise<void>
   addBookmark: (spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => Promise<void>
   updateBookmark: (spaceId: string, groupId: string, bookmarkId: string, newTitle: string, newNote?: string) => Promise<void>
   removeBookmark: (spaceId: string, groupId: string, bookmarkId: string) => Promise<void>
@@ -168,6 +169,21 @@ export const useStore = create<StoreState>((set, get) => ({
     })
     set({ spaces: newSpaces })
     saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
+  },
+
+  removeGroup: async (spaceId: string, groupId: string) => {
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.filter(group => group.id !== groupId)
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    await saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   addBookmark: async (spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => {
