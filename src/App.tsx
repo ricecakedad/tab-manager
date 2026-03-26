@@ -13,6 +13,7 @@ function App() {
   const { spaces, activeSpaceId, initialize, setActiveSpace, addSpace, addBookmark } = useStore()
   const [name, setName] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true) // 默认打开侧边栏
+  const [rightPanelOpen, setRightPanelOpen] = useState(true) // 右侧面板默认打开
   const [openTabs, setOpenTabs] = useState<TabInfo[]>([])
   const sidebarRef = useRef<HTMLDivElement>(null)
   const sidebarTimeoutRef = useRef<number | null>(null)
@@ -201,19 +202,41 @@ function App() {
           </main>
 
           {/* 右侧面板 - 会话历史 + 数据管理 */}
-          <aside className="sessions-panel">
+          <aside className={`sessions-panel ${rightPanelOpen ? 'panel-open' : 'panel-closed'}`}>
             <div className="sessions-panel-header">
-              <h3>📊 工具面板</h3>
-              <p>数据管理 & 会话历史</p>
+              <div className="panel-header-left">
+                <h3>📊 工具面板</h3>
+                <p>数据管理 & 会话历史</p>
+              </div>
+              <button 
+                className="panel-toggle-btn"
+                onClick={() => setRightPanelOpen(!rightPanelOpen)}
+                title={rightPanelOpen ? '关闭面板' : '打开面板'}
+              >
+                {rightPanelOpen ? '✕' : '📊'}
+              </button>
             </div>
-            <div className="sessions-panel-content">
-              <Suspense fallback={<div className="suspense-fallback">加载中…</div>}>
-                <ImportExport />
-                <Sessions />
-              </Suspense>
-            </div>
+            {rightPanelOpen && (
+              <div className="sessions-panel-content">
+                <Suspense fallback={<div className="suspense-fallback">加载中…</div>}>
+                  <ImportExport />
+                  <Sessions />
+                </Suspense>
+              </div>
+            )}
           </aside>
         </div>
+
+        {/* 右侧面板关闭时的提示按钮 */}
+        {!rightPanelOpen && (
+          <button 
+            className="right-panel-open-btn"
+            onClick={() => setRightPanelOpen(true)}
+            title="打开工具面板"
+          >
+            📊
+          </button>
+        )}
       </div>
 
       <Suspense fallback={null}>
