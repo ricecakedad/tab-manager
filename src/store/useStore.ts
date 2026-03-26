@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Space, TabSession, BookmarkItem } from '../shared/types'
-import { loadData, saveData, saveDataImmediate } from '../shared/storage'
+import { loadDataWithSync, saveDataWithSync } from '../shared/storage'
 
 interface StoreState {
   spaces: Space[]
@@ -37,20 +37,40 @@ export const useStore = create<StoreState>((set, get) => ({
   searchQuery: '',
 
   initialize: async () => {
-    const data = await loadData()
-    set({
-      spaces: data.spaces,
-      activeSpaceId: data.activeSpaceId,
-      sessions: data.sessions,
-      isDarkMode: data.isDarkMode,
-      isLoading: false
-    })
+    try {
+      const data = await loadDataWithSync() // 使用新的同步加载方法
+      set({
+        spaces: data.spaces,
+        activeSpaceId: data.activeSpaceId,
+        sessions: data.sessions,
+        isDarkMode: data.isDarkMode,
+        isLoading: false
+      })
+      
+      // 监听云端数据加载事件
+      const handleDataLoaded = (event: CustomEvent) => {
+        const data = event.detail
+        if (data) {
+          set({
+            spaces: data.spaces,
+            activeSpaceId: data.activeSpaceId,
+            sessions: data.sessions,
+            isDarkMode: data.isDarkMode
+          })
+        }
+      }
+      
+      window.addEventListener('sync-data-loaded', handleDataLoaded as EventListener)
+    } catch (error) {
+      console.error('初始化失败:', error)
+      set({ isLoading: false })
+    }
   },
 
   setActiveSpace: async (spaceId: string) => {
     set({ activeSpaceId: spaceId })
     const { spaces, sessions, isDarkMode } = get()
-    await saveDataImmediate({ spaces, activeSpaceId: spaceId, sessions, isDarkMode })
+    await saveDataWithSync({ spaces, activeSpaceId: spaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   addSpace: async (name: string, icon: string, color: string) => {
@@ -65,7 +85,7 @@ export const useStore = create<StoreState>((set, get) => ({
     }
     const newSpaces = [...spaces, newSpace]
     set({ spaces: newSpaces })
-    await saveDataImmediate({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    await saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   addGroup: async (spaceId: string, groupName: string) => {
@@ -87,7 +107,7 @@ export const useStore = create<StoreState>((set, get) => ({
     })
     set({ spaces: newSpaces })
     // debounce save to avoid frequent storage writes
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   updateGroupName: async (spaceId: string, groupId: string, newName: string) => {
@@ -107,7 +127,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   updateGroupColor: async (spaceId: string, groupId: string, color: string) => {
@@ -127,7 +147,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   updateGroupNote: async (spaceId: string, groupId: string, note: string) => {
@@ -147,7 +167,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   addBookmark: async (spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => {
@@ -174,7 +194,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   removeBookmark: async (spaceId: string, groupId: string, bookmarkId: string) => {
@@ -197,7 +217,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   updateBookmark: async (spaceId: string, groupId: string, bookmarkId: string, newTitle: string, newNote?: string) => {
@@ -225,7 +245,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   moveBookmark: async (spaceId: string, groupId: string, fromIndex: number, toIndex: number) => {
@@ -248,7 +268,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   moveBookmarkToGroup: async (spaceId: string, fromGroupId: string, toGroupId: string, bookmarkIndex: number, toIndex: number) => {
@@ -287,7 +307,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return space
     })
     set({ spaces: newSpaces })
-    saveData({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
+    saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
   },
 
   setSearchQuery: (query: string) => {

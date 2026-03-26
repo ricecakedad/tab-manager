@@ -4,6 +4,7 @@ import Bookmarks from './components/Bookmarks'
 const QuickLauncher = lazy(() => import('./components/QuickLauncher'))
 const ImportExport = lazy(() => import('./components/ImportExport'))
 const Sessions = lazy(() => import('./components/Sessions'))
+const SyncSettings = lazy(() => import('./components/SyncSettings')) // 新增
 import { useStore } from './store/useStore'
 import { saveCurrentSession as saveSessionLocal } from './shared/storage'
 import type { TabInfo } from './shared/types'
@@ -173,6 +174,9 @@ function App() {
           </div>
           
           <div className="header-right">
+            <Suspense fallback={<div className="loading-spinner">☁️</div>}>
+              <SyncSettings /> {/* 新增：同步设置按钮 */}
+            </Suspense>
             <input 
               className="session-name-input"
               placeholder="会话名称（可选）" 

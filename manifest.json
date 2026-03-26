@@ -23,6 +23,9 @@
     "storage",
     "tabs"
   ],
+  "host_permissions": [
+    "https://api.github.com/*"
+  ],
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"

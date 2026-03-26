@@ -42,6 +42,20 @@ export interface AppState {
   isDarkMode: boolean
 }
 
+// 新增：同步配置相关类型
+export interface SyncConfig {
+  syncMethod: 'chrome-sync' | 'github-gist' | 'local' // 同步方式
+  githubToken?: string // GitHub Personal Access Token
+  githubUsername?: string // GitHub 用户名
+  gistId?: string // 已创建的 Gist ID
+  lastSyncTime?: number // 最后同步时间
+  autoSync?: boolean // 是否自动同步
+}
+
+export interface AppStateWithSync extends AppState {
+  syncConfig?: SyncConfig
+}
+
 export interface TabInfo {
   id: number
   title: string
