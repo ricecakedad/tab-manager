@@ -20,14 +20,16 @@ export default function BookmarkCard({
     }
   }
 
-  const handleSave = () => {
+  const handleSave = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
     setIsEditing(false)
     if (onEdit && (editTitle !== item.title || editNote !== (item.note || ''))) {
       onEdit(editTitle, editNote)
     }
   }
 
-  const handleCancel = () => {
+  const handleCancel = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
     setIsEditing(false)
     setEditTitle(item.title)
     setEditNote(item.note || '')
@@ -47,7 +49,7 @@ export default function BookmarkCard({
 
   return (
     <div className="bookmark-card" onClick={handleClick} style={{ cursor: 'pointer' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 }}>
         <img 
           src={item.favicon || '/favicon.svg'} 
           alt="" 
@@ -55,7 +57,8 @@ export default function BookmarkCard({
             width: 20, 
             height: 20, 
             objectFit: 'contain',
-            flexShrink: 0
+            flexShrink: 0,
+            marginTop: 2
           }} 
         />
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
@@ -72,7 +75,7 @@ export default function BookmarkCard({
                   padding: '6px 8px',
                   border: '1px solid var(--border-color)',
                   borderRadius: '4px',
-                  fontSize: 14,
+                  fontSize: 13,
                   outline: 'none',
                   boxSizing: 'border-box'
                 }}
@@ -117,7 +120,7 @@ export default function BookmarkCard({
                   onClick={handleSave}
                   style={{
                     padding: '4px 8px',
-                    backgroundColor: 'var(--primary-color)',
+                    backgroundColor: 'var(--accent-color)',
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
@@ -134,6 +137,7 @@ export default function BookmarkCard({
               <div style={{ 
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: 6,
                 marginBottom: 4
               }}>
@@ -149,42 +153,44 @@ export default function BookmarkCard({
                 }} title={item.title}>
                   {item.title}
                 </div>
-                <button 
-                  className="action-icon-btn"
-                  onClick={handleEditClick}
-                  title="编辑"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    color: 'var(--text-secondary)',
-                    opacity: 0.7,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  ✏️
-                </button>
-                <button 
-                  className="action-icon-btn"
-                  onClick={handleDeleteClick}
-                  title="删除"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    color: 'var(--text-secondary)',
-                    opacity: 0.7,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  🗑️
-                </button>
+                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                  <button 
+                    className="action-icon-btn"
+                    onClick={handleEditClick}
+                    title="编辑"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: 'var(--text-secondary)',
+                      opacity: 0.6,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    ✏️
+                  </button>
+                  <button 
+                    className="action-icon-btn"
+                    onClick={handleDeleteClick}
+                    title="删除"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: 'var(--text-secondary)',
+                      opacity: 0.6,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
               {item.note && (
                 <div style={{ 
@@ -195,7 +201,8 @@ export default function BookmarkCard({
                   display: '-webkit-box',
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical',
-                  lineHeight: 1.4
+                  lineHeight: 1.4,
+                  maxHeight: '2.8em'
                 }}>
                   {item.note}
                 </div>

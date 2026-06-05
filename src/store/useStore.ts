@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import type { Space, TabSession, BookmarkItem } from '../shared/types'
+import type { AppState, Space, TabSession, BookmarkItem } from '../shared/types'
 import { loadDataWithSync, saveDataWithSync } from '../shared/storage'
+import { createId } from '../shared/id'
 
 interface StoreState {
   spaces: Space[]
@@ -12,6 +13,7 @@ interface StoreState {
 
   // Actions
   initialize: () => Promise<void>
+  applyAppState: (data: AppState) => Promise<void>
   setActiveSpace: (spaceId: string) => Promise<void>
   addSpace: (name: string, icon: string, color: string) => Promise<void>
   addGroup: (spaceId: string, groupName: string) => Promise<void>
@@ -38,8 +40,15 @@ export const useStore = create<StoreState>((set, get) => ({
   searchQuery: '',
 
   initialize: async () => {
+    console.log('🚀 应用开始初始化...')
     try {
       const data = await loadDataWithSync() // 使用新的同步加载方法
+      console.log('📊 应用初始化完成:', {
+        空间数量: data.spaces.length,
+        会话数量: data.sessions.length,
+        当前空间ID: data.activeSpaceId,
+        深色模式: data.isDarkMode
+      })
       set({
         spaces: data.spaces,
         activeSpaceId: data.activeSpaceId,
@@ -47,25 +56,29 @@ export const useStore = create<StoreState>((set, get) => ({
         isDarkMode: data.isDarkMode,
         isLoading: false
       })
-      
-      // 监听云端数据加载事件
-      const handleDataLoaded = (event: CustomEvent) => {
-        const data = event.detail
-        if (data) {
-          set({
-            spaces: data.spaces,
-            activeSpaceId: data.activeSpaceId,
-            sessions: data.sessions,
-            isDarkMode: data.isDarkMode
-          })
-        }
-      }
-      
-      window.addEventListener('sync-data-loaded', handleDataLoaded as EventListener)
     } catch (error) {
-      console.error('初始化失败:', error)
+      console.error('❌ 初始化失败:', error)
       set({ isLoading: false })
     }
+  },
+
+  applyAppState: async (data: AppState) => {
+    console.log('📥 应用云端数据:', {
+      空间数量: data.spaces.length,
+      会话数量: data.sessions.length,
+      当前空间ID: data.activeSpaceId,
+      深色模式: data.isDarkMode
+    })
+    set({
+      spaces: data.spaces,
+      activeSpaceId: data.activeSpaceId,
+      sessions: data.sessions,
+      isDarkMode: data.isDarkMode,
+      isLoading: false
+    })
+    console.log('💾 开始保存应用到同步存储...')
+    await saveDataWithSync(data)
+    console.log('✅ 应用数据保存完成')
   },
 
   setActiveSpace: async (spaceId: string) => {
@@ -77,7 +90,7 @@ export const useStore = create<StoreState>((set, get) => ({
   addSpace: async (name: string, icon: string, color: string) => {
     const { spaces, activeSpaceId, sessions, isDarkMode } = get()
     const newSpace: Space = {
-      id: `space-${Date.now()}`,
+      id: createId('space'),
       name,
       icon,
       color,
@@ -96,7 +109,7 @@ export const useStore = create<StoreState>((set, get) => ({
         return {
           ...space,
           groups: [...space.groups, {
-            id: `group-${Date.now()}`,
+            id: createId('group'),
             name: groupName,
             color: '#ffffff',
             items: [],
@@ -198,7 +211,7 @@ export const useStore = create<StoreState>((set, get) => ({
                 ...group,
                 items: [...group.items, {
                   ...bookmark,
-                  id: `bm-${Date.now()}`,
+                  id: createId('bm'),
                   addedAt: Date.now()
                 }]
               }

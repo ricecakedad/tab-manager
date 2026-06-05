@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { exportData, importData } from '../shared/storage'
+import { exportData, importData, saveDataWithSync, getSyncConfig } from '../shared/storage'
 import { useStore } from '../store/useStore'
 
 export default function ImportExport() {
@@ -26,18 +26,46 @@ export default function ImportExport() {
   const handleImportFile = async (file: File | null) => {
     if (!file) return
     
+    console.log('👤 用户选择导入文件:', file.name)
+    
     if (!confirm('导入数据将覆盖当前所有数据，确定要继续吗？')) {
+      console.log('⚠️ 用户取消了导入操作')
       return
     }
     
     setIsImporting(true)
     try {
+      console.log('📄 读取文件内容...')
       const text = await file.text()
+      console.log('  - 文件大小:', (text.length / 1024).toFixed(2), 'KB')
+      
+      console.log('🔄 开始解析并导入数据...')
       await importData(text)
+      
+      console.log('🔄 重新初始化应用状态...')
       await initialize()
-      alert('✅ 导入成功！')
+      
+      // 检查是否配置了云同步，如果是则同步到云端
+      console.log('🔍 检查同步配置...')
+      const syncConfig = await getSyncConfig()
+      if (syncConfig.syncMethod !== 'local' && syncConfig.autoSync) {
+        console.log('☁️ 检测到云同步配置，开始同步到云端...')
+        const state = useStore.getState()
+        await saveDataWithSync({
+          spaces: state.spaces,
+          activeSpaceId: state.activeSpaceId,
+          sessions: state.sessions,
+          isDarkMode: state.isDarkMode
+        })
+        console.log('✅ 数据已同步到云端')
+      } else {
+        console.log('ℹ️ 未启用云同步，仅保存到本地')
+      }
+      
+      console.log('✅ 导入完成！')
+      alert('✅ 导入成功！数据已更新')
     } catch (error) {
-      console.error('导入失败:', error)
+      console.error('❌ 导入失败:', error)
       alert('❌ 导入失败：文件格式错误或已损坏')
     } finally {
       setIsImporting(false)

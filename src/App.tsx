@@ -8,12 +8,27 @@ const SyncSettings = lazy(() => import('./components/SyncSettings')) // 新增
 import { useStore } from './store/useStore'
 import { saveCurrentSession as saveSessionLocal } from './shared/storage'
 import type { TabInfo } from './shared/types'
+import { getChromeApi } from './shared/chrome'
+
+function toTabInfo(tab: chrome.tabs.Tab): TabInfo | null {
+  if (tab.id === undefined || !tab.url) {
+    return null
+  }
+
+  return {
+    id: tab.id,
+    title: tab.title || tab.url,
+    url: tab.url,
+    favicon: tab.favIconUrl || '',
+    active: !!tab.active
+  }
+}
 
 function App() {
   const { spaces, activeSpaceId, initialize, setActiveSpace, addSpace, addBookmark } = useStore()
   const [name, setName] = useState('')
-  const [sidebarOpen, setSidebarOpen] = useState(true) // 默认打开侧边栏
-  const [rightPanelOpen, setRightPanelOpen] = useState(true) // 右侧面板默认打开
+  const [sidebarOpen, setSidebarOpen] = useState(false) // 默认打开侧边栏
+  const [rightPanelOpen, setRightPanelOpen] = useState(false) // 右侧面板默认打开
   const [openTabs, setOpenTabs] = useState<TabInfo[]>([])
   const sidebarRef = useRef<HTMLDivElement>(null)
   const sidebarTimeoutRef = useRef<number | null>(null)
@@ -22,15 +37,10 @@ function App() {
     initialize()
     
     // 获取所有打开的标签
-    if ((globalThis as any).chrome && (globalThis as any).chrome.tabs) {
-      ;(globalThis as any).chrome.tabs.query({}, (tabs: any[]) => {
-        setOpenTabs(tabs.map((tab: any) => ({
-          id: tab.id,
-          title: tab.title,
-          url: tab.url,
-          favicon: tab.favIconUrl || '',
-          active: tab.active
-        })))
+    const chromeApi = getChromeApi()
+    if (chromeApi?.tabs) {
+      chromeApi.tabs.query({}, (tabs) => {
+        setOpenTabs(tabs.map(toTabInfo).filter((tab): tab is TabInfo => tab !== null))
       })
     }
   }, [initialize])
@@ -59,12 +69,28 @@ function App() {
 
   const handleSave = async () => {
     const sessionName = name || `Session ${new Date().toLocaleString()}`
-    if ((globalThis as any).chrome && (globalThis as any).chrome.runtime) {
-      ;(globalThis as any).chrome.runtime.sendMessage({ action: 'save-current-session', name: sessionName })
+    const chromeApi = getChromeApi()
+    if (chromeApi?.tabs) {
+      const tabs = await chromeApi.tabs.query({ currentWindow: true })
+      const sessionTabs = tabs
+        .filter((tab): tab is chrome.tabs.Tab & { url: string } => !!tab.url)
+        .map((tab) => ({
+          url: tab.url,
+          title: tab.title || tab.url,
+          favicon: tab.favIconUrl || ''
+        }))
+
+      await saveSessionLocal(sessionName, sessionTabs)
+      await initialize()
+      alert(`已保存会话，共 ${sessionTabs.length} 个标签页`)
       return
     }
-    // Fallback for dev: save empty session
-    await saveSessionLocal(sessionName, [])
+    await saveSessionLocal(sessionName, openTabs.map((tab) => ({
+      url: tab.url,
+      title: tab.title,
+      favicon: tab.favicon
+    })))
+    await initialize()
     alert('已在本地保存会话（开发模式）')
   }
 
@@ -74,14 +100,15 @@ function App() {
   }
 
   const handleTabClick = (tab: TabInfo) => {
-    if ((globalThis as any).chrome && (globalThis as any).chrome.tabs) {
-      ;(globalThis as any).chrome.tabs.update(tab.id, { active: true })
+    const chromeApi = getChromeApi()
+    if (chromeApi?.tabs) {
+      chromeApi.tabs.update(tab.id, { active: true })
     }
   }
 
   const handleTabDragStart = (e: React.DragEvent, tab: TabInfo) => {
     e.dataTransfer.setData('application/json', JSON.stringify({ type: 'tab', data: tab }))
-    e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.effectAllowed = 'copyMove'
   }
 
   // Toby 风格：一键保存所有标签到指定分组
@@ -148,14 +175,27 @@ function App() {
         </div>
       </aside>
 
+      {/* 左侧侧边栏关闭时的悬浮按钮 */}
+      {!sidebarOpen && (
+        <button
+          className="sidebar-floating-btn"
+          onClick={() => setSidebarOpen(true)}
+          title="打开标签面板"
+        >
+          ☰
+        </button>
+      )}
+
       {/* 主内容区域 */}
       <div className="main-content">
         {/* 顶部导航栏 */}
         <header className="top-header">
           <div className="header-left">
-            <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
-              ☰
-            </button>
+            {sidebarOpen && (
+              <button className="sidebar-toggle" onClick={() => setSidebarOpen(false)}>
+                ☰
+              </button>
+            )}
             <div className="spaces-nav">
               {spaces.map(s => (
                 <button 
@@ -194,8 +234,11 @@ function App() {
           <main className="main-area">
             <Bookmarks 
               onTabDrop={(tab) => {
-                // 处理标签拖放到书签区域
-                console.log('Dropped tab:', tab)
+                setOpenTabs(prev => prev.filter(t => t.id !== tab.id))
+                const chromeApi = getChromeApi()
+                if (chromeApi?.tabs) {
+                  chromeApi.tabs.remove(tab.id)
+                }
               }}
               onSaveAllTabs={handleSaveAllTabsToGroup}
             />

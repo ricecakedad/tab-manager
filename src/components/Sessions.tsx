@@ -2,6 +2,12 @@ import { useState } from 'react'
 import { useStore } from '../store/useStore'
 import { removeSession as removeSessionLocal } from '../shared/storage'
 import type { TabSession } from '../shared/types'
+import { getChromeApi } from '../shared/chrome'
+
+type RestoreSessionResponse = {
+  success: boolean
+  reason?: string
+}
 
 export default function Sessions() {
   const sessions = useStore(state => state.sessions)
@@ -9,10 +15,16 @@ export default function Sessions() {
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
 
   const restore = async (session: TabSession) => {
+    const chromeApi = getChromeApi()
+    if (!chromeApi?.runtime) {
+      alert('当前环境不支持恢复会话')
+      return
+    }
+
     try {
-      ;(globalThis as any).chrome?.runtime?.sendMessage(
+      chromeApi.runtime.sendMessage(
         { action: 'restore-session', sessionId: session.id }, 
-        (resp: any) => {
+        (resp?: RestoreSessionResponse) => {
           if (resp && resp.success) {
             alert(`✅ 已开始恢复会话 "${session.name}"，共 ${session.tabs.length} 个标签页`)
           } else {
@@ -93,7 +105,7 @@ export default function Sessions() {
               {expandedSessionId === session.id && (
                 <div className="session-details">
                   <div className="tabs-preview">
-                    {session.tabs.slice(0, 5).map((tab, idx) => (
+                    {session.tabs.map((tab, idx) => (
                       <div key={idx} className="tab-preview-item" title={tab.title}>
                         {tab.favicon && (
                           <img src={tab.favicon} alt="" className="tab-favicon-small" />
@@ -101,11 +113,11 @@ export default function Sessions() {
                         <span className="tab-title-small">{tab.title}</span>
                       </div>
                     ))}
-                    {session.tabs.length > 5 && (
+                    {/* {session.tabs.length > 5 && (
                       <div className="more-tabs-hint">
                         还有 {session.tabs.length - 5} 个标签页...
                       </div>
-                    )}
+                    )} */}
                   </div>
                   <div className="session-actions">
                     <button 

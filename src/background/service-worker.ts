@@ -1,44 +1,99 @@
+import { createId } from '../shared/id'
+
 // Background service worker for MV3
-// Listens for messages from popup/newtab to save current window tabs as a session
+// Listens for messages from popup/newtab to save current window tabs as a session.
 
-const STORAGE_KEY: string = 'tab-manager-data';
+const STORAGE_KEY = 'tab-manager-data'
 
-(globalThis as any).chrome.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (resp: any) => void) => {
-  if (message?.action === 'save-current-session') {
+type SessionRecord = {
+  id: string
+  name: string
+  tabs: Array<{ url: string; title: string; favicon: string }>
+  savedAt: number
+}
+
+type StoredState = {
+  spaces: unknown[]
+  activeSpaceId: string
+  sessions: SessionRecord[]
+  isDarkMode: boolean
+}
+
+type Message =
+  | { action: 'save-current-session'; name?: string }
+  | { action: 'restore-session'; sessionId: string }
+
+type MessageResponse = {
+  success: boolean
+  reason?: string
+}
+
+function getStoredState(callback: (state: StoredState) => void) {
+  chrome.storage.local.get(STORAGE_KEY, (result) => {
+    const state = (result[STORAGE_KEY] as StoredState | undefined) || {
+      spaces: [],
+      activeSpaceId: '',
+      sessions: [],
+      isDarkMode: false
+    }
+
+    callback(state)
+  })
+}
+
+chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse: (resp: MessageResponse) => void) => {
+  if (message.action === 'save-current-session') {
     const name = message.name || `Session ${new Date().toLocaleString()}`
-    ;(globalThis as any).chrome.tabs.query({ currentWindow: true }, (tabs: any[]) => {
-      const tabsData = tabs.map(t => ({ url: t.url || '', title: t.title || '', favicon: (t.favIconUrl as string) || '' }))
-      ;(globalThis as any).chrome.storage.local.get(STORAGE_KEY, (res: any) => {
-        const state = res[STORAGE_KEY] || { spaces: [], activeSpaceId: '', sessions: [], isDarkMode: false }
+
+    chrome.tabs.query({ currentWindow: true }, (tabs) => {
+      const tabsData = tabs
+        .filter((tab): tab is chrome.tabs.Tab & { url: string } => !!tab.url)
+        .map((tab) => ({
+          url: tab.url,
+          title: tab.title || tab.url,
+          favicon: tab.favIconUrl || ''
+        }))
+
+      getStoredState((state) => {
         state.sessions = state.sessions || []
-        state.sessions.push({ id: `session-${Date.now()}`, name, tabs: tabsData, savedAt: Date.now() })
-        ;(globalThis as any).chrome.storage.local.set({ [STORAGE_KEY]: state }, () => {
+        state.sessions.push({
+          id: createId('session'),
+          name,
+          tabs: tabsData,
+          savedAt: Date.now()
+        })
+
+        chrome.storage.local.set({ [STORAGE_KEY]: state }, () => {
           sendResponse({ success: true })
         })
       })
     })
-    // Return true to indicate we'll send response asynchronously
+
     return true
   }
-  if (message?.action === 'restore-session') {
-    const sessionId = message.sessionId
-    ;(globalThis as any).chrome.storage.local.get(STORAGE_KEY, (res: any) => {
-      const state = res[STORAGE_KEY]
-      if (!state || !state.sessions) {
+
+  if (message.action === 'restore-session') {
+    getStoredState((state) => {
+      if (!state.sessions.length) {
         sendResponse({ success: false, reason: 'no-sessions' })
         return
       }
-      const session = state.sessions.find((s: any) => s.id === sessionId)
+
+      const session = state.sessions.find((savedSession) => savedSession.id === message.sessionId)
       if (!session) {
         sendResponse({ success: false, reason: 'not-found' })
         return
       }
-      // Open each tab in a new tab
-      for (const t of session.tabs) {
-        ;(globalThis as any).chrome.tabs.create({ url: t.url })
+
+      for (const tab of session.tabs) {
+        chrome.tabs.create({ url: tab.url })
       }
+
       sendResponse({ success: true })
     })
+
     return true
   }
+
+  return false
 })

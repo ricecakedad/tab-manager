@@ -3,6 +3,10 @@ import { useStore } from '../store/useStore'
 import BookmarkCard from './BookmarkCard'
 import type { TabInfo } from '../shared/types'
 
+type DragPayload =
+  | { type: 'tab'; data: TabInfo }
+  | { type: 'bookmark'; groupId: string; index: number }
+
 interface AddBookmarkModalProps {
   isOpen: boolean
   onClose: () => void
@@ -49,8 +53,8 @@ const AddBookmarkModal: React.FC<AddBookmarkModalProps> = ({ isOpen, onClose, on
       setNote('')
       setTags('')
       onClose()
-    } catch (err: any) {
-      setError(err.message || '添加失败')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '添加失败')
     } finally {
       setIsSubmitting(false)
     }
@@ -179,9 +183,8 @@ export default function Bookmarks({
   const [groupNote, setGroupNote] = useState('')
   const [addingBookmarkGroupId, setAddingBookmarkGroupId] = useState<string | null>(null)
   const [moreMenuOpenId, setMoreMenuOpenId] = useState<string | null>(null)
-  // 使用 useRef 来存储折叠状态，避免条件渲染导致 Hook 顺序问题
-  const collapsedGroupsRef = React.useRef<Set<string>>(new Set())
-  const [_, forceUpdate] = useState(0)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
   // 点击外部关闭更多菜单
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -198,17 +201,15 @@ export default function Bookmarks({
 
   // 切换分组折叠状态
   const toggleGroupCollapse = (groupId: string) => {
-    if (collapsedGroupsRef.current.has(groupId)) {
-      collapsedGroupsRef.current.delete(groupId)
-    } else {
-      collapsedGroupsRef.current.add(groupId)
-    }
-    forceUpdate(n => n + 1)
+    setCollapsedGroups((current) => ({
+      ...current,
+      [groupId]: !current[groupId]
+    }))
   }
 
   // 检查分组是否折叠
   const isCollapsed = (groupId: string) => {
-    return collapsedGroupsRef.current.has(groupId)
+    return !!collapsedGroups[groupId]
   }
 
 
@@ -258,7 +259,7 @@ export default function Bookmarks({
   const handleBookmarkDrop = async (e: React.DragEvent, targetGroupId: string, toIndex: number) => {
     e.preventDefault()
     try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'))
+      const data = JSON.parse(e.dataTransfer.getData('application/json')) as DragPayload
       
       // 处理标签页拖拽（从左侧侧边栏拖过来）
       if (data.type === 'tab' && data.data) {
@@ -294,7 +295,7 @@ export default function Bookmarks({
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
+    e.dataTransfer.dropEffect = 'move'
   }
 
   return (
@@ -447,9 +448,21 @@ export default function Bookmarks({
 
                 
                 <div 
-                  className="group-list" 
+                  className={`group-list ${dragOverGroupId === g.id ? 'drag-over' : ''}`}
                   onDragOver={onDragOver}
-                  onDrop={(e) => handleBookmarkDrop(e, g.id, g.items.length)}
+                  onDragEnter={(e) => {
+                    e.preventDefault()
+                    setDragOverGroupId(g.id)
+                  }}
+                  onDragLeave={(e) => {
+                    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as HTMLElement)) {
+                      setDragOverGroupId(null)
+                    }
+                  }}
+                  onDrop={(e) => {
+                    setDragOverGroupId(null)
+                    handleBookmarkDrop(e, g.id, g.items.length)
+                  }}
                 >
                   {g.items.map((item, idx) => (
                     <div
@@ -457,7 +470,10 @@ export default function Bookmarks({
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'bookmark', groupId: g.id, index: idx }))}
                       onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => handleBookmarkDrop(e, g.id, idx)}
+                      onDrop={(e) => {
+                        setDragOverGroupId(null)
+                        handleBookmarkDrop(e, g.id, idx)
+                      }}
                       className="bookmark-item-enhanced"
                     >
                       <BookmarkCard item={item} onRemove={() => removeBookmark(space.id, g.id, item.id)} onEdit={(title, note) => updateBookmark(space.id, g.id, item.id, title, note)} />
@@ -466,16 +482,17 @@ export default function Bookmarks({
                   {g.items.length === 0 && <div className="empty">拖拽标签到这里或点击"+添加"按钮</div>}
                 </div>
 
-                {/* 添加书签模态框 */}
-                <AddBookmarkModal
-                  isOpen={addingBookmarkGroupId === g.id}
-                  onClose={() => setAddingBookmarkGroupId(null)}
-                  onAdd={(data) => onAddBookmark(g.id, data)}
-                />
               </>
             )}
         </div>
       ))}
+
+      {/* 单一模态框实例，在循环外渲染 */}
+      <AddBookmarkModal
+        isOpen={addingBookmarkGroupId !== null}
+        onClose={() => setAddingBookmarkGroupId(null)}
+        onAdd={(data) => onAddBookmark(addingBookmarkGroupId!, data)}
+      />
     </div>
   )
 }
