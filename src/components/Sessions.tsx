@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore'
-import { removeSession as removeSessionLocal } from '../shared/storage'
+import { removeSession as removeSessionLocal } from '../shared/sessions'
 import type { TabSession } from '../shared/types'
 import { getChromeApi } from '../shared/chrome'
 

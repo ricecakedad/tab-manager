@@ -127,7 +127,7 @@ const SyncSettings: React.FC = () => {
         当前空间ID: activeSpaceId
       })
       
-      await saveDataWithSync(currentState)
+      await saveDataWithSync(currentState, { forceRemote: true })
       
       // 重新加载配置以获取最新的 Gist ID（如果自动创建了新的 Gist）
       const loadedConfig = await loadSyncConfig()

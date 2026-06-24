@@ -19,19 +19,7 @@ export default defineConfig({
   ],
   build: {
     outDir: 'dist',
-    emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        // 将 newtab 作为主入口
-        index: 'src/newtab/index.html',
-        popup: 'src/popup/index.html'
-      },
-      output: {
-        entryFileNames: `assets/[name]-[hash].js`,
-        chunkFileNames: `assets/[name]-[hash].js`,
-        assetFileNames: `assets/[name]-[hash].[ext]`
-      }
-    }
+    emptyOutDir: true
   },
   resolve: {
     alias: {

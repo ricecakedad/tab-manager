@@ -1,14 +1,16 @@
 import type { BookmarkItem } from '../shared/types'
 import { useState } from 'react'
 
-export default function BookmarkCard({ 
-  item, 
+export default function BookmarkCard({
+  item,
   onRemove,
-  onEdit 
-}: { 
-  item: BookmarkItem, 
+  onEdit,
+  onEditingChange
+}: {
+  item: BookmarkItem,
   onRemove?: () => void,
-  onEdit?: (newTitle: string, newNote: string) => void 
+  onEdit?: (newTitle: string, newNote: string) => void,
+  onEditingChange?: (editing: boolean) => void
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(item.title)
@@ -20,9 +22,14 @@ export default function BookmarkCard({
     }
   }
 
-  const handleSave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation()
-    setIsEditing(false)
+  const setEditing = (editing: boolean) => {
+    setIsEditing(editing)
+    onEditingChange?.(editing)
+  }
+
+  const handleSave = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    e?.stopPropagation()
+    setEditing(false)
     if (onEdit && (editTitle !== item.title || editNote !== (item.note || ''))) {
       onEdit(editTitle, editNote)
     }
@@ -30,14 +37,14 @@ export default function BookmarkCard({
 
   const handleCancel = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
-    setIsEditing(false)
+    setEditing(false)
     setEditTitle(item.title)
     setEditNote(item.note || '')
   }
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setIsEditing(true)
+    setEditing(true)
   }
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -69,6 +76,8 @@ export default function BookmarkCard({
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSave() } }}
                 placeholder="标题"
                 style={{
                   width: '100%',
@@ -85,6 +94,8 @@ export default function BookmarkCard({
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSave() } }}
                 placeholder="简介（可选）"
                 rows={2}
                 style={{

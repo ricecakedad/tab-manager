@@ -22,6 +22,7 @@ interface StoreState {
   updateGroupNote: (spaceId: string, groupId: string, note: string) => Promise<void>
   removeGroup: (spaceId: string, groupId: string) => Promise<void>
   addBookmark: (spaceId: string, groupId: string, bookmark: Omit<BookmarkItem, 'id' | 'addedAt'>) => Promise<void>
+  addBookmarks: (spaceId: string, groupId: string, bookmarks: Omit<BookmarkItem, 'id' | 'addedAt'>[]) => Promise<void>
   updateBookmark: (spaceId: string, groupId: string, bookmarkId: string, newTitle: string, newNote?: string) => Promise<void>
   removeBookmark: (spaceId: string, groupId: string, bookmarkId: string) => Promise<void>
   moveBookmark: (spaceId: string, groupId: string, fromIndex: number, toIndex: number) => Promise<void>
@@ -224,6 +225,39 @@ export const useStore = create<StoreState>((set, get) => ({
     })
     set({ spaces: newSpaces })
     saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode }) // 使用同步保存
+  },
+
+  addBookmarks: async (spaceId: string, groupId: string, bookmarks: Omit<BookmarkItem, 'id' | 'addedAt'>[]) => {
+    if (bookmarks.length === 0) return
+
+    const { spaces, activeSpaceId, sessions, isDarkMode } = get()
+    const now = Date.now()
+    const newSpaces = spaces.map(space => {
+      if (space.id === spaceId) {
+        return {
+          ...space,
+          groups: space.groups.map(group => {
+            if (group.id === groupId) {
+              return {
+                ...group,
+                items: [
+                  ...group.items,
+                  ...bookmarks.map((bookmark, index) => ({
+                    ...bookmark,
+                    id: createId('bm'),
+                    addedAt: now + index
+                  }))
+                ]
+              }
+            }
+            return group
+          })
+        }
+      }
+      return space
+    })
+    set({ spaces: newSpaces })
+    await saveDataWithSync({ spaces: newSpaces, activeSpaceId, sessions, isDarkMode })
   },
 
   removeBookmark: async (spaceId: string, groupId: string, bookmarkId: string) => {

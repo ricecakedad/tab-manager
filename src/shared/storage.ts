@@ -1,9 +1,9 @@
 import type { AppState, SyncConfig } from './types'
-import { DEFAULT_SPACES, DEFAULT_ACTIVE_SPACE_ID } from './defaultData'
 import { getChromeApi } from './chrome'
-import { createId } from './id'
+import { loadData, performWrite, STORAGE_KEY } from './localData'
 
-const STORAGE_KEY = 'tab-manager-data'
+export { loadData, saveData, saveDataImmediate } from './localData'
+
 const SYNC_CONFIG_KEY = 'tab-manager-sync-config'
 const SYNC_META_KEY = `${STORAGE_KEY}-sync-meta`
 const SYNC_CHUNK_PREFIX = `${STORAGE_KEY}-sync-chunk-`
@@ -451,142 +451,6 @@ export async function loadSyncConfig(): Promise<SyncConfig> {
   }
 }
 
-// ==================== 原有的本地存储方法（保留兼容性）====================
-export async function loadData(): Promise<AppState> {
-  const chromeApi = getChromeApi()
-  if (chromeApi?.storage?.local) {
-    return new Promise((resolve) => {
-      chromeApi.storage.local.get(STORAGE_KEY, (result) => {
-        const storedState = result[STORAGE_KEY] as AppState | undefined
-        if (storedState) {
-          resolve(storedState)
-        } else {
-          // 初始化默认数据
-          const defaultState: AppState = {
-            spaces: DEFAULT_SPACES,
-            activeSpaceId: DEFAULT_ACTIVE_SPACE_ID,
-            sessions: [],
-            isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches
-          }
-          chromeApi.storage.local.set({ [STORAGE_KEY]: defaultState })
-          resolve(defaultState)
-        }
-      })
-    })
-  } else {
-    // 开发环境使用 localStorage
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored)
-    }
-    const defaultState: AppState = {
-      spaces: DEFAULT_SPACES,
-      activeSpaceId: DEFAULT_ACTIVE_SPACE_ID,
-      sessions: [],
-      isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState))
-    return defaultState
-  }
-}
-
-export async function saveData(state: AppState): Promise<void> {
-  return debouncedSave(state)
-}
-
-// Immediately write to storage (no debounce). 返回完成写入的 Promise。
-export async function saveDataImmediate(state: AppState): Promise<void> {
-  return performWrite(state)
-}
-
-const DEBOUNCE_MS = 800
-let pendingState: AppState | null = null
-let saveTimer: number | null = null
-let pendingResolvers: Array<() => void> = []
-
-function debouncedSave(state: AppState): Promise<void> {
-  pendingState = state
-
-  return new Promise((resolve) => {
-    pendingResolvers.push(resolve)
-
-    if (saveTimer) {
-      clearTimeout(saveTimer)
-    }
-
-    saveTimer = window.setTimeout(async () => {
-      const toSave = pendingState!
-      pendingState = null
-      saveTimer = null
-      try {
-        await performWrite(toSave)
-        const resolvers = pendingResolvers.slice()
-        pendingResolvers = []
-        resolvers.forEach(r => r())
-      } catch {
-        // still resolve callers to avoid hanging; errors can be logged by caller
-        const resolvers = pendingResolvers.slice()
-        pendingResolvers = []
-        resolvers.forEach(r => r())
-      }
-    }, DEBOUNCE_MS)
-  })
-}
-
-function performWrite(state: AppState): Promise<void> {
-  const chromeApi = getChromeApi()
-  if (chromeApi?.storage?.local) {
-    return new Promise((resolve) => {
-      chromeApi.storage.local.set({ [STORAGE_KEY]: state }, () => {
-        resolve()
-      })
-    })
-  } else {
-    return new Promise((resolve) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-      resolve()
-    })
-  }
-}
-
-// 保存当前标签会话
-export async function saveCurrentSession(name: string, tabs: { url: string; title: string; favicon: string }[]): Promise<void> {
-  const state = await loadDataWithSync()
-  state.sessions.push({
-    id: createId('session'),
-    name,
-    tabs,
-    savedAt: Date.now()
-  })
-  await saveDataWithSync(state)
-}
-
-export async function exportData(): Promise<string> {
-  const state = await loadData()
-  return JSON.stringify(state, null, 2)
-}
-
-export async function importData(json: string): Promise<void> {
-  console.log('📥 开始导入数据...')
-  const parsed = JSON.parse(json)
-  console.log('  - 解析后的数据:', {
-    空间数量: parsed.spaces?.length || 0,
-    会话数量: parsed.sessions?.length || 0,
-    当前空间ID: parsed.activeSpaceId || '未设置'
-  })
-  
-  // 使用立即保存，确保数据写入存储后再继续
-  console.log('💾 正在立即保存导入的数据...')
-  await saveDataImmediate(parsed)
-  console.log('✅ 数据已保存到存储')
-}
-
-export async function removeSession(sessionId: string): Promise<void> {
-  const state = await loadData()
-  state.sessions = state.sessions.filter(s => s.id !== sessionId)
-  await saveData(state)
-}
-
 // ==================== 新增：统一的数据加载和保存（支持同步配置）====================
 let cachedSyncConfig: SyncConfig | null = null
 
@@ -648,11 +512,17 @@ export async function loadDataWithSync(): Promise<AppState> {
  */
 const SYNC_DEBOUNCE_MS = 800
 let syncPendingState: AppState | null = null
+let syncPendingForceRemote = false
 let syncTimer: number | null = null
 let syncPendingResolvers: Array<() => void> = []
 
-export function saveDataWithSync(state: AppState): Promise<void> {
+type SaveDataWithSyncOptions = {
+  forceRemote?: boolean
+}
+
+export function saveDataWithSync(state: AppState, options: SaveDataWithSyncOptions = {}): Promise<void> {
   syncPendingState = state
+  syncPendingForceRemote = syncPendingForceRemote || !!options.forceRemote
 
   return new Promise((resolve) => {
     syncPendingResolvers.push(resolve)
@@ -663,7 +533,9 @@ export function saveDataWithSync(state: AppState): Promise<void> {
 
     syncTimer = (typeof globalThis.setTimeout === 'function' ? globalThis.setTimeout : setTimeout)(async () => {
       const toSave = syncPendingState!
+      const forceRemote = syncPendingForceRemote
       syncPendingState = null
+      syncPendingForceRemote = false
       syncTimer = null
       const resolvers = syncPendingResolvers.slice()
       syncPendingResolvers = []
@@ -672,17 +544,24 @@ export function saveDataWithSync(state: AppState): Promise<void> {
         const config = await getSyncConfig()
         console.log('🔄 开始同步数据，同步方式:', config.syncMethod)
 
-        if (config.syncMethod === 'chrome-sync' && isChromeExtension) {
+        const shouldSyncRemote = forceRemote || !!config.autoSync
+        let remoteSynced = false
+
+        if (shouldSyncRemote && config.syncMethod === 'chrome-sync' && isChromeExtension) {
           await saveToChromeSync(toSave)
-        } else if (config.syncMethod === 'github-gist') {
+          remoteSynced = true
+        } else if (shouldSyncRemote && config.syncMethod === 'github-gist') {
           await saveToGitHubGist(config, toSave)
+          remoteSynced = true
+        } else if (!shouldSyncRemote && config.syncMethod !== 'local') {
+          console.log('ℹ️ 自动同步已关闭，仅保存到本地')
         } else {
           console.log('ℹ️ 使用本地存储，跳过远程同步')
         }
 
         await performWrite(toSave)
 
-        if (config.autoSync) {
+        if (remoteSynced) {
           config.lastSyncTime = Date.now()
           await saveSyncConfig(config)
           console.log('✅ 数据同步完成，最后同步时间:', new Date(config.lastSyncTime).toLocaleString())

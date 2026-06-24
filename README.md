@@ -120,8 +120,8 @@
 - **框架**: React v19.2.4 + TypeScript
 - **构建工具**: Vite v8.0.1
 - **状态管理**: Zustand
-- **样式**: Tailwind CSS
-- **拖拽库**: @dnd-kit
+- **样式**: 原生 CSS + CSS Variables
+- **拖拽**: HTML5 Drag and Drop API
 - **存储方案**: 
   - Chrome Storage Local/Sync
   - GitHub Gist API

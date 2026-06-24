@@ -6,43 +6,22 @@ const ImportExport = lazy(() => import('./components/ImportExport'))
 const Sessions = lazy(() => import('./components/Sessions'))
 const SyncSettings = lazy(() => import('./components/SyncSettings')) // 新增
 import { useStore } from './store/useStore'
-import { saveCurrentSession as saveSessionLocal } from './shared/storage'
+import { saveCurrentSession as saveSessionLocal } from './shared/sessions'
 import type { TabInfo } from './shared/types'
 import { getChromeApi } from './shared/chrome'
-
-function toTabInfo(tab: chrome.tabs.Tab): TabInfo | null {
-  if (tab.id === undefined || !tab.url) {
-    return null
-  }
-
-  return {
-    id: tab.id,
-    title: tab.title || tab.url,
-    url: tab.url,
-    favicon: tab.favIconUrl || '',
-    active: !!tab.active
-  }
-}
+import { useOpenTabs } from './hooks/useOpenTabs'
 
 function App() {
-  const { spaces, activeSpaceId, initialize, setActiveSpace, addSpace, addBookmark } = useStore()
+  const { spaces, activeSpaceId, initialize, setActiveSpace, addSpace, addBookmarks } = useStore()
   const [name, setName] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false) // 默认打开侧边栏
   const [rightPanelOpen, setRightPanelOpen] = useState(false) // 右侧面板默认打开
-  const [openTabs, setOpenTabs] = useState<TabInfo[]>([])
+  const { openTabs, setOpenTabs } = useOpenTabs()
   const sidebarRef = useRef<HTMLDivElement>(null)
   const sidebarTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     initialize()
-    
-    // 获取所有打开的标签
-    const chromeApi = getChromeApi()
-    if (chromeApi?.tabs) {
-      chromeApi.tabs.query({}, (tabs) => {
-        setOpenTabs(tabs.map(toTabInfo).filter((tab): tab is TabInfo => tab !== null))
-      })
-    }
   }, [initialize])
 
   // 侧边栏自动收起逻辑
@@ -122,20 +101,14 @@ function App() {
       return
     }
     
-    for (const tab of openTabs) {
-      try {
-        await addBookmark(activeSpaceId, groupId, {
-          url: tab.url,
-          title: tab.title,
-          favicon: tab.favicon || '',
-          tags: [],
-          note: ''
-        })
-        savedCount++
-      } catch (e) {
-        console.error('Failed to save tab:', e)
-      }
-    }
+    await addBookmarks(activeSpaceId, groupId, openTabs.map((tab) => ({
+      url: tab.url,
+      title: tab.title,
+      favicon: tab.favicon || '',
+      tags: [],
+      note: ''
+    })))
+    savedCount = openTabs.length
     alert(`✅ 已保存 ${savedCount} 个标签到分组 "${group.name}"`)
   }
 

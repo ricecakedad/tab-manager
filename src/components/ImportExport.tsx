@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { exportData, importData, saveDataWithSync, getSyncConfig } from '../shared/storage'
+import { saveDataWithSync, getSyncConfig } from '../shared/storage'
+import { exportData, importData } from '../shared/dataPortability'
 import { useStore } from '../store/useStore'
 
 export default function ImportExport() {
